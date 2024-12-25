@@ -1,0 +1,84 @@
+                           #RANKINGS
+
+import requests
+import mysql.connector
+import time
+
+# API endpoint and key
+url = "https://api.sportradar.com/tennis/trial/v3/en/double_competitors_rankings.json?api_key=elkxoOrP61GYNpZQ9fz5zAmVQi8iXgpin2ri9Hcb"
+headers = {"accept": "application/json"}
+
+# Fetch data from the API
+response = requests.get(url, headers=headers)
+
+if response.status_code != 200:
+    print(f"Failed to fetch data from API. Status code: {response.status_code}")
+    exit()
+
+# Parse the API response
+data = response.json()
+rankings = data.get("rankings", [])
+
+if not rankings:
+    print("No rankings found in the API response.")
+    exit()
+
+# Connect to the MySQL database
+try:
+    connection = mysql.connector.connect(
+        host="gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+        port=4000,
+        user="3HnrAoXYB1zUtgp.root",
+        password="t6By7FBUzVuxXJ1W",
+        database="ASHOK",
+        connection_timeout=600  # Increased timeout for long-running operations
+    )
+    cursor = connection.cursor()
+    print("Connected to database:", connection.database)
+except mysql.connector.Error as err:
+    print(f"Database connection failed: {err}")
+    exit()
+
+# Prepare data for insertion
+rankings_data = []
+
+for ranking_category in rankings:
+    rank_type = ranking_category.get("type")
+    year = ranking_category.get("year")
+    gender = ranking_category.get("gender")
+    competitor_rankings = ranking_category.get("competitor_rankings", [])
+
+    for rank_data in competitor_rankings:
+        rank = rank_data.get("rank")
+        movement = rank_data.get("movement", 0)
+        points = rank_data.get("points", 0)
+        competitions_played = rank_data.get("competitions_played", 0)
+        competitor = rank_data.get("competitor", {})
+        competitor_id = competitor.get("id")
+        name = competitor.get("name", "")
+        week = time.strftime("%U")  # Get current week number
+
+        # Ensure all required fields are present
+        if not (competitor_id and rank and name and year and gender and competitions_played):
+            print(f"Skipping incomplete ranking data: {rank_data}")
+            continue
+
+        rankings_data.append((rank, movement, points, competitions_played, competitor_id, rank_type, name, year, week, gender))
+
+# Insert data into the database
+try:
+    insert_query = """
+    INSERT INTO competitor_rankings (
+        `rank`, movement, points, competitions_played, competitor_id, type, name, year, week, gender
+    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+    """
+    cursor.executemany(insert_query, rankings_data)
+    connection.commit()
+    print(f"Inserted {cursor.rowcount} rows into competitor_rankings.")
+except mysql.connector.Error as err:
+    print(f"Error inserting competitor rankings: {err}")
+
+# Close the database connection
+cursor.close()
+connection.close()
+print("Database connection closed.")

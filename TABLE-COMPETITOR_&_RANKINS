@@ -1,0 +1,81 @@
+CREATE TABLE Competitors (
+    competitor_id VARCHAR(50) PRIMARY KEY, -- Unique ID for each competitor
+    name VARCHAR(100) NOT NULL,            -- Name of the competitor
+    country VARCHAR(100) NOT NULL,         -- Competitor's country
+    country_code CHAR(3) NOT NULL,         -- ISO country code
+    abbreviation VARCHAR(10) NOT NULL      -- Shortened name/abbreviation of competitor
+);
+
+  CREATE TABLE rankings (
+    rank_id INT PRIMARY KEY AUTO_INCREMENT, 
+    rank INT NOT NULL, 
+    movement INT NOT NULL, 
+    points INT NOT NULL, 
+    competitions_played INT NOT NULL, 
+    competitor_id VARCHAR(50) NOT NULL, 
+    type VARCHAR(50) NOT NULL, 
+    name VARCHAR(100) NOT NULL, 
+    year INT NOT NULL, 
+    week INT NOT NULL, 
+    gender VARCHAR(10) NOT NULL, 
+    FOREIGN KEY (competitor_id) REFERENCES competitor(competitor_id)
+);
+                       #queries
+
+ "Get all competitors with their rank and points",
+            "Find competitors ranked in the top 5",
+            "List competitors with no rank movement (stable rank)",
+            "Get the total points of competitors from a specific country (e.g., Croatia)",
+            "Count the number of competitors per country",
+            "Find competitors with the highest points in the current week"
+        ]
+        queries = {
+                "Get all competitors with their rank and points": """
+                    SELECT c.name AS competitor_name, cr.rank, cr.points 
+                    FROM competitor_rankings cr
+                    JOIN competitor c ON cr.competitor_id = c.competitor_id
+                    ORDER BY cr.rank ASC;
+                
+                """,
+                "Find competitors ranked in the top 5": """
+                    SELECT c.name AS competitor_name, cr.rank, cr.points 
+                    FROM competitor_rankings cr
+                    JOIN competitor c ON cr.competitor_id = c.competitor_id
+                    WHERE cr.rank <= 5
+                    ORDER BY cr.rank ASC;
+                    
+                    
+                """,
+                "List competitors with no rank movement (stable rank)": """
+                    SELECT c.name AS competitor_name, cr.rank, cr.points 
+                    FROM competitor_rankings cr
+                    JOIN competitor c ON cr.competitor_id = c.competitor_id
+                    WHERE cr.movement = 0;
+                    
+                    
+                """,
+                "Get the total points of competitors from a specific country (e.g., Croatia)": f"""
+                       SELECT c.country, SUM(cr.points) AS total_points 
+                       FROM competitor_rankings cr
+                       JOIN competitor c ON cr.competitor_id = c.competitor_id
+                       WHERE c.country = '{country}'
+                       GROUP BY c.country;
+                    
+                    
+                """ if country else "",
+                "Count the number of competitors per country": """
+                    SELECT c.country, COUNT(c.competitor_id) AS competitor_count 
+                    FROM competitor c
+                    GROUP BY c.country
+                    ORDER BY competitor_count DESC;
+                    
+                    
+                """,
+                "Find competitors with the highest points in the current week": """
+                    SELECT c.name AS competitor_name, cr.points 
+                    FROM competitor_rankings cr
+                    JOIN competitor c ON cr.competitor_id = c.competitor_id
+                    WHERE cr.year = YEAR AND cr.week = WEEK
+                    ORDER BY cr.points DESC 
+                    LIMIT 5;
+                    

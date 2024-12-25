@@ -1,0 +1,110 @@
+                       #VENUES
+import requests
+import mysql.connector
+import time
+
+# API URL and headers
+url = "https://api.sportradar.com/tennis/trial/v3/en/complexes.json?api_key=elkxoOrP61GYNpZQ9fz5zAmVQi8iXgpin2ri9Hcb"
+headers = {"accept": "application/json"}
+
+# Fetch data from the API
+response = requests.get(url, headers=headers)
+if response.status_code != 200:
+    print(f"Failed to fetch data from API. Status code: {response.status_code}, response: {response.text}")
+    exit()
+
+# Parse JSON response
+data = response.json()
+venues = []
+for complex_data in data.get("complexes", []):
+    venues.extend(complex_data.get("venues", []))  # Extract venues from each complex
+
+# Debug: Log number of venues fetched
+print(f"Number of venues fetched: {len(venues)}")
+if not venues:
+    print("No venues found in the API response.")
+    exit()
+
+# Database connection setup
+try:
+    connection = mysql.connector.connect(
+        host="gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+        port=4000,
+        user="3HnrAoXYB1zUtgp.root",
+        password="PCw46dlb7ySub4bY",
+        database="tennisdata"
+    )
+    cursor = connection.cursor()
+    print("Connected to database:", connection.database)
+except mysql.connector.Error as err:
+    print(f"Database connection failed: {err}")
+    exit()
+
+# SQL query for inserting data
+query = """
+INSERT INTO Venues (venue_id, venue_name, city_name, country_name, country_code, timezone)
+VALUES (%s, %s, %s, %s, %s, %s)
+ON DUPLICATE KEY UPDATE
+    venue_name = VALUES(venue_name),
+    city_name = VALUES(city_name),
+    country_name = VALUES(country_name),
+    country_code = VALUES(country_code),
+    timezone = VALUES(timezone);
+"""
+
+# Function to execute SQL query with retries
+def execute_with_retry(cursor, query, values, retries=3):
+    for attempt in range(retries):
+        try:
+            cursor.executemany(query, values)
+            return
+        except mysql.connector.Error as e:
+            if attempt < retries - 1:
+                print(f"Retrying due to: {e}")
+                time.sleep(5)  # Wait before retrying
+            else:
+                raise
+
+# Process data for batch insertion
+batch = []
+batch_size = 100
+start_time = time.time()
+
+for venue in venues:
+    venue_id = venue.get("id")
+    venue_name = venue.get("name", "")
+    city_name = venue.get("city_name", "")
+    country_name = venue.get("country_name", "")
+    country_code = venue.get("country_code", "")
+    timezone = venue.get("timezone", "")
+
+    if not all([venue_id, venue_name, city_name, country_name, country_code, timezone]):
+        print(f"Skipped venue due to missing data: {venue}")
+        continue
+
+    batch.append((venue_id, venue_name, city_name, country_name, country_code, timezone))
+
+    # Insert when batch size is reached
+    if len(batch) == batch_size:
+        try:
+            execute_with_retry(cursor, query, batch)
+            connection.commit()
+            print(f"Inserted {len(batch)} venues.")
+        except Exception as e:
+            print(f"Error inserting batch: {e}")
+        batch = []  # Clear the batch
+
+# Insert remaining records
+if batch:
+    try:
+        execute_with_retry(cursor, query, batch)
+        connection.commit()
+        print(f"Inserted {len(batch)} remaining venues.")
+    except Exception as e:
+        print(f"Error inserting remaining records: {e}")
+
+# Close database connection
+cursor.close()
+connection.close()
+
+print(f"Data insertion completed in {time.time() - start_time:.2f} seconds!")

@@ -1,0 +1,73 @@
+              #COMPLEX
+import requests
+import mysql.connector
+import time
+
+# Fetch data from the API
+url = "https://api.sportradar.com/tennis/trial/v3/en/complexes.json?api_key=elkxoOrP61GYNpZQ9fz5zAmVQi8iXgpin2ri9Hcb"
+headers = {"accept": "application/json"}
+response = requests.get(url, headers=headers)
+
+# Parse JSON response
+data = response.json()
+complexes = data.get("complexes", [])
+
+# Connect to MySQL database
+connection = mysql.connector.connect(
+    host="gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+    port=4000,
+    user="3HnrAoXYB1zUtgp.root",
+    password="PCw46dlb7ySub4bY",
+    database="tennisdata"
+)
+cursor = connection.cursor()
+
+# SQL INSERT query for complexes
+query = """
+INSERT INTO complexes (complex_id, complex_name)
+VALUES (%s, %s)
+ON DUPLICATE KEY UPDATE
+    complex_name = VALUES(complex_name);
+"""
+
+# Function to execute SQL queries with retry mechanism
+def execute_with_retry(cursor, query, values, retries=3):
+    for attempt in range(retries):
+        try:
+            cursor.executemany(query, values)
+            return
+        except mysql.connector.Error as e:
+            if attempt < retries - 1:
+                print(f"Retrying due to: {e}")
+                time.sleep(5)  # Wait before retrying
+            else:
+                raise
+
+# Process data for complexes
+batch = []
+batch_size = 100
+start_time = time.time()
+
+for complex_data in complexes:
+    complex_id = complex_data.get("id")
+    complex_name = complex_data.get("name", "")
+
+    if complex_id and complex_name:  # Ensure both fields are available
+        batch.append((complex_id, complex_name))
+
+    # Insert when the batch size is reached
+    if len(batch) == batch_size:
+        execute_with_retry(cursor, query, batch)
+        connection.commit()
+        batch = []  # Clear the batch
+
+# Insert remaining records
+if batch:
+    execute_with_retry(cursor, query, batch)
+    connection.commit()
+
+# Close connection
+cursor.close()
+connection.close()
+
+print(f"Data inserted successfully in {time.time() - start_time:.2f} seconds!")

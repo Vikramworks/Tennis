@@ -1,0 +1,11 @@
+    API EXTRACTION 
+
+ import requests
+
+url = "https://api.sportradar.com/tennis/trial/v3/en/competitions.json?api_key=elkxoOrP61GYNpZQ9fz5zAmVQi8iXgpin2ri9Hcb"
+
+headers = {"accept": "application/json"}
+
+response = requests.get(url, headers=headers)
+
+print(response.text)    

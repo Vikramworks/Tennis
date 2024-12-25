@@ -1,0 +1,70 @@
+import requests
+import mysql.connector
+import time
+
+# Fetch data from the API
+url = "https://api.sportradar.com/tennis/trial/v3/en/competitions.json?api_key=elkxoOrP61GYNpZQ9fz5zAmVQi8iXgpin2ri9Hcb"
+headers = {"accept": "application/json"}
+response = requests.get(url, headers=headers)
+
+# Parse JSON response
+data = response.json()
+competitions = data["competitions"]
+
+# Connect to MySQL database
+connection = mysql.connector.connect(
+    host="gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+    port=4000,
+    user="3HnrAoXYB1zUtgp.root",
+    password="t6By7FBUzVuxXJ1W",
+    database="ashok"
+)
+cursor = connection.cursor()
+
+# SQL INSERT query for categories
+category_query = """
+INSERT INTO category (category_id, category_name)
+VALUES (%s, %s)
+ON DUPLICATE KEY UPDATE
+    category_name = VALUES(category_name);
+"""
+
+# Function to execute queries with retry
+def execute_with_retry(cursor, query, data, retries=3, delay=5):
+    for attempt in range(retries):
+        try:
+            cursor.executemany(query, data)
+            return
+        except mysql.connector.Error as e:
+            if "Lock wait timeout exceeded" in str(e) and attempt < retries - 1:
+                print(f"Retrying due to lock timeout... Attempt {attempt + 1}")
+                time.sleep(delay)
+            else:
+                raise
+
+# Prepare data for batch insertion
+batch_size = 25  # Smaller batch size to minimize lock contention
+batch = []
+
+for competition in competitions:
+    category_id = competition["category"]["id"]
+    category_name = competition["category"]["name"]
+
+    batch.append((category_id, category_name))
+
+    # Insert batch when batch size is reached
+    if len(batch) == batch_size:
+        execute_with_retry(cursor, category_query, batch)
+        connection.commit()
+        batch = []  # Clear the batch
+
+# Insert any remaining rows
+if batch:
+    execute_with_retry(cursor, category_query, batch)
+    connection.commit()
+
+# Close the connection
+cursor.close()
+connection.close()
+
+print("Category data inserted successfully!")

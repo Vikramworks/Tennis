@@ -1,0 +1,65 @@
+CREATE TABLE Complexes (
+    complex_id VARCHAR(50) PRIMARY KEY,        -- Unique ID for the complex
+    complex_name VARCHAR(100) NOT NULL        -- Name of the sports complex
+);
+CREATE TABLE Venues (
+    venue_id VARCHAR(50) PRIMARY KEY,         -- Unique ID for the venue
+    venue_name VARCHAR(100) NOT NULL,         -- Name of the venue
+    city_name VARCHAR(100) NOT NULL,          -- Name of the city
+    country_name VARCHAR(100) NOT NULL,       -- Name of the country
+    country_code CHAR(3) NOT NULL,            -- ISO country code
+    timezone VARCHAR(100) NOT NULL,           -- Timezone of the venue
+    complex_id VARCHAR(50),                   -- Links to the complexes table
+    FOREIGN KEY (complex_id) REFERENCES Complexes(complex_id) -- Foreign key constraint
+);
+                           #queries
+
+ "List all venues along with their associated complex name",
+            "Count the number of venues in each complex",
+            "Get details of venues in a specific country (e.g., Chile)",
+            "Identify all venues and their timezones",
+            "Find complexes that have more than one venue",
+            "List venues grouped by country",
+            "Find all venues for a specific complex (e.g., Nacional)",
+        ]
+
+
+     queries = {
+                "List all venues along with their associated complex name": """
+                    SELECT venues.venue_name AS Venue, complexes.complex_name AS Complex
+                    FROM venues
+                    JOIN complexes ON venues.complex_id = complexes.complex_id
+                """,
+                "Count the number of venues in each complex": """
+                    SELECT complexes.complex_name AS Complex, COUNT(venues.venue_id) AS Venue_Count
+                    FROM venues
+                    JOIN complexes ON venues.complex_id = complexes.complex_id
+                    GROUP BY complexes.complex_name order by venue_count desc
+                """,
+                "Get details of venues in a specific country (e.g., Chile)": f"""
+                    SELECT * FROM venues
+                    WHERE country_name = '{country}';
+                """ if country else "",
+                "Identify all venues and their timezones": """
+                    SELECT venue_name AS Venue, timezone AS Timezone
+                    FROM venues;
+                """,
+                "Find complexes that have more than one venue": """
+                    SELECT complexes.complex_name AS Complex, COUNT(venues.venue_id) AS Venue_Count
+                    FROM venues
+                    JOIN complexes ON venues.complex_id = complexes.complex_id
+                    GROUP BY complexes.complex_name
+                    HAVING Venue_Count > 1
+                """,
+                "List venues grouped by country": """
+                    SELECT country_name AS Country, GROUP_CONCAT(venue_name SEPARATOR ', ') AS Venues
+                    FROM venues
+                    GROUP BY country_name
+                """,
+                "Find all venues for a specific complex (e.g., Nacional)": f"""
+                    SELECT venues.venue_name AS Venue
+                    FROM venues
+                    JOIN complexes ON venues.complex_id = complexes.complex_id
+                    WHERE complexes.complex_name = '{complex_name}';
+                """ if complex_name else ""
+            }

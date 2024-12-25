@@ -1,0 +1,134 @@
+import requests
+import mysql.connector
+import time
+
+# Fetch data from the API
+url = "https://api.sportradar.com/tennis/trial/v3/en/double_competitors_rankings.json?api_key=elkxoOrP61GYNpZQ9fz5zAmVQi8iXgpin2ri9Hcb"
+headers = {"accept": "application/json"}
+
+response = requests.get(url, headers=headers)
+
+# Check API response status
+if response.status_code != 200:
+    print(f"Failed to fetch data from API. Status code: {response.status_code}")
+    exit()
+
+# Parse JSON response
+data = response.json()
+
+# Debugging: Check the structure of the response
+print("API response data:", data)
+
+# Extract the competitors from the rankings
+competitors = []
+
+# Extract the list of rankings
+rankings = data.get("rankings", [])
+
+for ranking in rankings:
+    competitor_rankings = ranking.get("competitor_rankings", [])
+
+    # Extracting competitor information from each ranking entry
+    for competitor_data in competitor_rankings:
+        competitor = competitor_data.get("competitor", {})
+        competitor_id = competitor.get("id")
+        name = competitor.get("name")
+        country = competitor.get("country")
+        country_code = competitor.get("country_code")
+        abbreviation = competitor.get("abbreviation", "")
+
+        # Debugging: Log extracted competitor details
+        print(f"Extracted Competitor: {competitor}")
+
+        # Skip if competitor_id or name is missing
+        if not competitor_id or not name:
+            print(f"Skipping competitor with missing data: {competitor}")
+            continue
+
+        # Add competitor to list
+        competitors.append((competitor_id, name, country, country_code, abbreviation))
+
+# Debugging: Print all collected competitors
+print("Collected competitors:", competitors)
+
+# If no valid competitors are collected, exit the script
+if not competitors:
+    print("No valid competitors to insert.")
+    exit()
+
+# Connect to MySQL database
+try:
+    connection = mysql.connector.connect(
+        host="gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+        port=4000,
+        user="3HnrAoXYB1zUtgp.root",
+        password="t6By7FBUzVuxXJ1W",
+        database="ashok",
+        connection_timeout=600  # Increase timeout for long-running processes
+    )
+    cursor = connection.cursor()
+    print("Connected to database:", connection.database)
+except mysql.connector.Error as err:
+    print(f"Database connection failed: {err}")
+    exit()
+
+# Ensure the 'competitor' table exists with correct columns (for this example)
+try:
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS competitor (
+        competitor_id VARCHAR(50) PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        country VARCHAR(100) NOT NULL,
+        country_code CHAR(3) NOT NULL,
+        abbreviation VARCHAR(10) NOT NULL
+    );
+    """)
+    print("Competitor table checked/created.")
+except mysql.connector.Error as err:
+    print(f"Error creating table: {err}")
+    exit()
+
+# SQL query for inserting competitor data
+insert_query = """
+INSERT INTO competitor (competitor_id, name, country, country_code, abbreviation)
+VALUES (%s, %s, %s, %s, %s)
+ON DUPLICATE KEY UPDATE
+    name = VALUES(name),
+    country = VALUES(country),
+    country_code = VALUES(country_code),
+    abbreviation = VALUES(abbreviation);
+"""
+
+# Insert competitors data into the table in batches
+batch_size = 100
+batch = []
+start_time = time.time()
+
+for competitor in competitors:
+    batch.append(competitor)
+
+    # Insert when batch size is reached
+    if len(batch) == batch_size:
+        try:
+            cursor.executemany(insert_query, batch)
+            connection.commit()
+            print(f"Inserted or updated {cursor.rowcount} competitors in this batch.")
+        except mysql.connector.Error as e:
+            print(f"Error inserting competitors batch: {e}")
+        batch = []  # Clear the batch
+
+# Insert remaining competitors if any
+if batch:
+    try:
+        cursor.executemany(insert_query, batch)
+        connection.commit()
+        print(f"Inserted or updated {cursor.rowcount} remaining competitors.")
+    except mysql.connector.Error as e:
+        print(f"Error inserting remaining competitors: {e}")
+
+# Close database connection
+cursor.close()
+connection.close()
+
+# Print completion time
+print(f"Data insertion completed in {time.time() - start_time:.2f} seconds!")

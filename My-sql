@@ -1,0 +1,16 @@
+                  SQL connection
+                   
+import mysql.connector
+
+connection = mysql.connector.connect(
+  host = "gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+  port = 4000,
+  user = "3HnrAoXYB1zUtgp.root",
+  password = "PCw46dlb7ySub4bY",
+  database="tennisdata"
+)
+mycursor = connection.cursor()
+
+mycursor.execute("SHOW TABLES")
+for x in mycursor:
+  print(x)

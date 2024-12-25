@@ -1,0 +1,93 @@
+                       #FOREIGN KEY UPLOAD FOR COMPETITION TABLE#
+
+import requests
+import mysql.connector
+import time
+
+# Fetch data from the API
+url = "https://api.sportradar.com/tennis/trial/v3/en/competitions.json?api_key=elkxoOrP61GYNpZQ9fz5zAmVQi8iXgpin2ri9Hcb"
+headers = {"accept": "application/json"}
+response = requests.get(url, headers=headers)
+
+# Check API response status
+if response.status_code != 200:
+    print(f"Failed to fetch data from API. Status code: {response.status_code}")
+    exit()
+
+# Parse JSON response
+data = response.json()
+competitions = data.get("competitions", [])
+if not competitions:
+    print("No competitions found in API response.")
+    exit()
+
+# Connect to MySQL database
+try:
+    connection = mysql.connector.connect(
+        host="gateway01.ap-southeast-1.prod.aws.tidbcloud.com",
+        port=4000,
+        user="3HnrAoXYB1zUtgp.root",
+        password="t6By7FBUzVuxXJ1W",
+        database="tennisdata",
+        connection_timeout=600  # Increase timeout for long-running processes
+    )
+    cursor = connection.cursor()
+    print("Connected to database:", connection.database)
+except mysql.connector.Error as err:
+    print(f"Database connection failed: {err}")
+    exit()
+
+# Ensure category_id column exists in competitions table
+try:
+    cursor.execute("ALTER TABLE competitions ADD COLUMN IF NOT EXISTS category_id VARCHAR(50);")
+except mysql.connector.Error as err:
+    print(f"Error ensuring category_id column exists: {err}")
+    exit()
+
+# Batch process updates
+batch = []
+batch_size = 100
+start_time = time.time()
+
+for competition in competitions:
+    competition_id = competition.get("id")
+    category_id = competition.get("category", {}).get("id")
+
+    if not competition_id or not category_id:
+        print(f"Skipping competition due to missing data: {competition}")
+        continue
+
+    batch.append((category_id, competition_id))
+
+    # Execute the batch if batch size is reached
+    if len(batch) == batch_size:
+        try:
+            cursor.executemany("""
+            UPDATE competitions
+            SET category_id = %s
+            WHERE competition_id = %s;
+            """, batch)
+            connection.commit()
+            print(f"Updated {len(batch)} competitions.")
+        except mysql.connector.Error as e:
+            print(f"Error updating batch: {e}")
+        batch = []  # Clear the batch
+
+# Update remaining competitions
+if batch:
+    try:
+        cursor.executemany("""
+        UPDATE competitions
+        SET category_id = %s
+        WHERE competition_id = %s;
+        """, batch)
+        connection.commit()
+        print(f"Updated {len(batch)} remaining competitions.")
+    except mysql.connector.Error as e:
+        print(f"Error updating remaining records: {e}")
+
+# Close database connection
+cursor.close()
+connection.close()
+
+print(f"Data insertion completed in {time.time() - start_time:.2f} seconds!")
